@@ -64,7 +64,7 @@ MCP is an open standard (created by Anthropic) that provides a universal way for
 | Package Manager | Bun | (built-in, ~25x faster than npm) |
 | Language | TypeScript | 5.4+ (native Bun support) |
 | AI Framework | Vercel AI SDK | 6.x (beta) |
-| LLM Provider | Anthropic Claude | claude-3-5-sonnet |
+| LLM Providers | Anthropic, OpenAI, Google, Groq, Mistral | Multi-provider support |
 | Tool Protocol | MCP | Model Context Protocol |
 | Slack Integration | Bolt SDK | `@slack/bolt` 4.x |
 | Notion Integration | Notion MCP | `mcp.notion.com` |
@@ -120,6 +120,177 @@ MCP is an open standard (created by Anthropic) that provides a universal way for
 - User ID whitelist (only you can interact)
 - API key management via environment variables
 - Action confirmation for destructive operations
+
+### 6. Onboarding Flow
+- Guided setup when agent is first added
+- Step-by-step app connection (Notion, Gmail, etc.)
+- OAuth flow handling within Slack
+- Connection status dashboard
+- Easy disconnect/reconnect
+
+### 7. Model Selection (Slash Commands)
+- `/model` command to view and switch AI models
+- Support for multiple providers (Anthropic, OpenAI, Google, etc.)
+- Per-conversation or global model preference
+- Model capability indicators
+
+## Supported AI Providers & Models
+
+| Provider | Models | Best For |
+|----------|--------|----------|
+| **Anthropic** | `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, `claude-3-haiku-20240307` | Complex reasoning, tool use |
+| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `o1-preview`, `o1-mini` | General purpose, vision |
+| **Google** | `gemini-2.0-flash-exp`, `gemini-1.5-pro`, `gemini-1.5-flash` | Multimodal, long context |
+| **Groq** | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768` | Fast inference |
+| **Mistral** | `mistral-large-latest`, `mistral-medium`, `mistral-small` | European, efficient |
+| **OpenRouter** | 300+ models | Access to any model |
+
+### Default Model
+
+```typescript
+// Default: Claude 3.5 Sonnet (best for agentic tasks)
+const DEFAULT_MODEL = 'anthropic/claude-3-5-sonnet-20241022';
+```
+
+### Model Selection via Slash Command
+
+```
+/model                     - Show current model and available options
+/model claude-sonnet       - Switch to Claude 3.5 Sonnet
+/model gpt-4o              - Switch to GPT-4o
+/model gemini-flash        - Switch to Gemini 2.0 Flash
+/model list                - List all available models
+```
+
+## Onboarding Flow
+
+When you first add the agent to Slack, it guides you through setup:
+
+### First Message (Automatic)
+
+```
+Agent: 👋 Hey! I'm your personal AI agent. I can help you manage
+       Notion, Gmail, and more through natural conversation.
+
+       Let's get you set up! This will take about 2 minutes.
+
+       First, which apps would you like to connect?
+
+       [📝 Notion] [📧 Gmail] [📅 Calendar] [Skip for now]
+```
+
+### Notion Connection
+
+```
+You: *clicks Notion*
+
+Agent: 📝 Let's connect Notion!
+
+       Click below to authorize access to your workspace:
+       [Connect Notion →]
+
+       I'll be able to:
+       • Search your workspace
+       • Read and create pages
+       • Query and update databases
+
+       Your data stays private - I only access what you ask for.
+```
+
+```
+*User authorizes*
+
+Agent: ✅ Notion connected successfully!
+
+       I found your workspace: "Personal"
+       📊 12 databases, 156 pages
+
+       What's next?
+       [📧 Connect Gmail] [✓ Finish Setup]
+```
+
+### Gmail Connection
+
+```
+You: *clicks Gmail*
+
+Agent: 📧 Let's connect Gmail!
+
+       Click below to authorize:
+       [Connect Gmail →]
+
+       I'll be able to:
+       • Read your emails
+       • Send emails (with your confirmation)
+       • Manage labels and organization
+
+       🔒 I use OAuth 2.0 - I never see your password.
+```
+
+### Setup Complete
+
+```
+Agent: 🎉 You're all set up!
+
+       Connected apps:
+       ✅ Notion - Personal workspace
+       ✅ Gmail - john@gmail.com
+
+       Here are some things you can try:
+       • "What's on my Notion today?"
+       • "Summarize my unread emails"
+       • "Create a new page called Meeting Notes"
+
+       💡 Tip: Type /help anytime to see all commands.
+
+       ---
+
+       Current model: Claude 3.5 Sonnet
+       Use /model to change it anytime.
+```
+
+### Connection Management (Anytime)
+
+```
+You: "/apps" or "/connections"
+
+Agent: 📱 Connected Apps
+
+       ✅ Notion
+          Workspace: Personal
+          Connected: 2 days ago
+          [Disconnect] [Reconnect]
+
+       ✅ Gmail
+          Account: john@gmail.com
+          Connected: 2 days ago
+          [Disconnect] [Reconnect]
+
+       ❌ Calendar
+          Not connected
+          [Connect Google Calendar]
+
+       ❌ GitHub
+          Not connected
+          [Connect GitHub]
+```
+
+### Disconnect Flow
+
+```
+You: *clicks Disconnect on Gmail*
+
+Agent: ⚠️ Disconnect Gmail?
+
+       This will:
+       • Remove access to john@gmail.com
+       • Delete stored tokens
+       • Stop all Gmail functionality
+
+       You can reconnect anytime.
+
+       [Disconnect] [Cancel]
+```
 
 ## Chain of Thought Display
 
@@ -198,6 +369,14 @@ Personal-agent/
 │   │       │   ├── messages.ts  # DM message handler
 │   │       │   ├── mentions.ts  # @mention handler
 │   │       │   └── actions.ts   # Button/action handlers
+│   │       ├── commands/
+│   │       │   ├── model.ts     # /model slash command
+│   │       │   ├── apps.ts      # /apps connection management
+│   │       │   └── help.ts      # /help command
+│   │       ├── onboarding/
+│   │       │   ├── flow.ts      # Onboarding state machine
+│   │       │   ├── steps.ts     # Individual onboarding steps
+│   │       │   └── blocks.ts    # Onboarding UI blocks
 │   │       ├── blocks/
 │   │       │   ├── thinking.ts  # Thinking indicator blocks
 │   │       │   ├── action.ts    # Action display blocks
@@ -229,8 +408,16 @@ SLACK_SIGNING_SECRET=your-signing-secret
 # Allowed Users (comma-separated Slack user IDs)
 ALLOWED_USER_IDS=U0123456789
 
-# LLM Provider (using Anthropic Claude)
+# LLM Providers (add keys for providers you want to use)
 ANTHROPIC_API_KEY=your_anthropic_key
+OPENAI_API_KEY=your_openai_key
+GOOGLE_GENERATIVE_AI_API_KEY=your_google_key
+GROQ_API_KEY=your_groq_key
+MISTRAL_API_KEY=your_mistral_key
+# OPENROUTER_API_KEY=your_openrouter_key  # Optional: access 300+ models
+
+# Default model (format: provider/model-id)
+DEFAULT_MODEL=anthropic/claude-3-5-sonnet-20241022
 
 # Notion MCP (OAuth handled by MCP server)
 # For hosted MCP: OAuth flow via mcp.notion.com
@@ -263,11 +450,22 @@ features:
     home_tab_enabled: true
     messages_tab_enabled: true
     messages_tab_read_only_enabled: false
+  slash_commands:
+    - command: /model
+      description: View or change the AI model
+      usage_hint: "[model-name]"
+    - command: /apps
+      description: Manage connected apps
+      usage_hint: ""
+    - command: /help
+      description: Show available commands and features
+      usage_hint: ""
 
 oauth_config:
   scopes:
     bot:
       - chat:write
+      - commands
       - im:history
       - im:read
       - im:write
@@ -496,6 +694,10 @@ Agent: ✅ Your Week in Review:
   "dependencies": {
     "ai": "^6.0.0-beta",
     "@ai-sdk/anthropic": "^1.0.0",
+    "@ai-sdk/openai": "^1.0.0",
+    "@ai-sdk/google": "^1.0.0",
+    "@ai-sdk/groq": "^1.0.0",
+    "@ai-sdk/mistral": "^1.0.0",
     "@slack/bolt": "^4.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "drizzle-orm": "^0.38.0",
