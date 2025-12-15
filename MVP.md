@@ -2,13 +2,13 @@
 
 ## Overview
 
-A personal AI assistant controlled via Slack that can take actions on your behalf across various platforms (starting with Notion). Built with Vercel AI SDK v6 and Node.js, designed for extensibility with full visibility into the agent's chain of thought and actions.
+A personal AI assistant controlled via Slack that can take actions on your behalf across various platforms (starting with Notion). Built with Vercel AI SDK v6 and Bun, designed for extensibility with full visibility into the agent's chain of thought and actions.
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│   Slack App     │────▶│   Node.js Server     │────▶│   MCP Client    │
+│   Slack App     │────▶│   Bun Server         │────▶│   MCP Client    │
 │   (DM / @mention)│◀────│   (Bolt SDK)         │◀────│                 │
 └─────────────────┘     └──────────────────────┘     └─────────────────┘
         │                         │                          │
@@ -58,16 +58,32 @@ MCP is an open standard (created by Anthropic) that provides a universal way for
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Runtime | Node.js 20+ |
-| Language | TypeScript |
-| AI Framework | Vercel AI SDK v6 (beta) |
-| Tool Protocol | MCP (Model Context Protocol) |
-| Slack Integration | Bolt SDK (`@slack/bolt`) |
-| Notion Integration | Official Notion MCP Server (`mcp.notion.com`) |
-| Database | SQLite (local) / PostgreSQL (production) |
-| LLM Provider | OpenAI / Anthropic (configurable) |
+| Component | Technology | Version |
+|-----------|------------|---------|
+| Runtime | Bun | 1.x |
+| Package Manager | Bun | (built-in, ~25x faster than npm) |
+| Language | TypeScript | 5.4+ (native Bun support) |
+| AI Framework | Vercel AI SDK | 6.x (beta) |
+| LLM Provider | Anthropic Claude | claude-3-5-sonnet |
+| Tool Protocol | MCP | Model Context Protocol |
+| Slack Integration | Bolt SDK | `@slack/bolt` 4.x |
+| Notion Integration | Notion MCP | `mcp.notion.com` |
+| Database | PostgreSQL | 16+ |
+| ORM | Drizzle ORM | Native Bun support, SQL-like |
+| Validation | Zod | 3.x |
+
+### Why Bun?
+- **~25x faster installs** than npm
+- **Native TypeScript** - no build step needed
+- **Built-in test runner** - no Jest/Vitest needed
+- **Native fetch** - no node-fetch
+- **28% lower latency** vs Node.js (Vercel benchmarks)
+
+### Why Drizzle over Prisma?
+- **Native Bun support** - no binary engine needed
+- **SQL-like syntax** - more control, transparent queries
+- **Lightweight** - minimal runtime overhead
+- **Type-safe** - full TypeScript inference
 
 ## Core Features (MVP Scope)
 
@@ -167,6 +183,10 @@ Personal-agent/
 │   │   │   └── system.ts        # System tools (memory, time, etc.)
 │   │   └── prompts/
 │   │       └── system.ts        # System prompts
+│   ├── db/
+│   │   ├── index.ts             # Drizzle client setup
+│   │   ├── schema.ts            # Database schema definitions
+│   │   └── migrations/          # SQL migrations
 │   ├── mcp/
 │   │   ├── client.ts            # MCP client setup
 │   │   ├── notion.ts            # Notion MCP server connection
@@ -184,13 +204,14 @@ Personal-agent/
 │   │       │   └── result.ts    # Result display blocks
 │   │       └── types.ts         # Slack types
 │   └── storage/
-│       ├── conversation.ts      # Conversation history
-│       └── db.ts                # Database connection
+│       └── conversation.ts      # Conversation history (uses db)
+├── drizzle.config.ts            # Drizzle ORM configuration
 ├── manifest.json                # Slack app manifest
 ├── tests/
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
+├── bunfig.toml                  # Bun configuration
 └── README.md
 ```
 
@@ -208,9 +229,7 @@ SLACK_SIGNING_SECRET=your-signing-secret
 # Allowed Users (comma-separated Slack user IDs)
 ALLOWED_USER_IDS=U0123456789
 
-# LLM Provider
-OPENAI_API_KEY=your_openai_key
-# Or use Anthropic
+# LLM Provider (using Anthropic Claude)
 ANTHROPIC_API_KEY=your_anthropic_key
 
 # Notion MCP (OAuth handled by MCP server)
@@ -222,8 +241,10 @@ NOTION_MCP_URL=https://mcp.notion.com/mcp
 # Chain of Thought visibility (minimal | standard | verbose)
 DEFAULT_VISIBILITY=standard
 
-# Database (optional for MVP, can use in-memory)
-DATABASE_URL=file:./data/agent.db
+# PostgreSQL Database
+# Local: postgresql://postgres:password@localhost:5432/personal_agent
+# Railway/Render: provided automatically
+DATABASE_URL=postgresql://user:password@localhost:5432/personal_agent
 ```
 
 ## Slack App Manifest
@@ -453,31 +474,44 @@ Agent: ✅ Your Week in Review:
 5. Run your own MCP server (open-source available)
 
 ### Deployment Options (MVP)
-- **Local Development**: ngrok + `npm run dev`
-- **Production**: Railway, Render, Fly.io, Vercel, or any Node.js hosting
-- **Recommended for MVP**: Deploy early to Railway/Render (free tier) to avoid ngrok hassle
+- **Local Development**: ngrok + `bun dev`
+- **Production**: Railway, Render, Fly.io (all support Bun)
+- **Recommended for MVP**: Deploy early to Railway (free tier, native Bun support)
 
 ## Dependencies
 
 ```json
 {
+  "name": "personal-agent",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "ai": "^6.0.0-beta",
-    "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/anthropic": "^1.0.0",
     "@slack/bolt": "^4.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "better-sqlite3": "^11.0.0",
-    "zod": "^3.23.0",
-    "dotenv": "^16.4.0"
+    "drizzle-orm": "^0.38.0",
+    "postgres": "^3.4.0",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "@types/node": "^20.0.0",
-    "tsx": "^4.7.0"
+    "@types/bun": "latest",
+    "drizzle-kit": "^0.30.0",
+    "typescript": "^5.4.0"
   }
 }
 ```
+
+> **Note**: No `dotenv` needed - Bun loads `.env` files automatically.
+> No `tsx` needed - Bun runs TypeScript natively.
 
 ## Development Phases
 
@@ -542,14 +576,26 @@ Agent: ✅ Your Week in Review:
 ## Quick Start (After Implementation)
 
 ```bash
+# Install Bun (if not already installed)
+curl -fsSL https://bun.sh/install | bash
+
 # Clone and install
 git clone <repo>
 cd Personal-agent
-npm install
+bun install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your Slack tokens and API keys
+# Edit .env with your Slack tokens, Anthropic key, and database URL
+
+# Set up PostgreSQL (local dev)
+# Option A: Use Docker
+docker run -d --name postgres -e POSTGRES_PASSWORD=password -p 5432:5432 postgres:16
+
+# Option B: Use Railway/Neon for hosted PostgreSQL
+
+# Run migrations
+bun db:migrate
 
 # Start ngrok tunnel (in separate terminal)
 ngrok http 3000
@@ -559,23 +605,30 @@ ngrok http 3000
 # https://abc123.ngrok.io/slack/events
 
 # Run server
-npm run dev
+bun dev
 
 # Open Slack and DM your bot!
 ```
 
-**Pro tip**: Deploy to Railway/Render early to skip the ngrok step entirely.
+**Pro tip**: Deploy to Railway early - it provides free PostgreSQL and native Bun support.
 
 ## References
+
+### Runtime & Database
+- [Bun Documentation](https://bun.sh/docs)
+- [Bun on Vercel](https://vercel.com/docs/functions/runtimes/bun)
+- [Drizzle ORM](https://orm.drizzle.team/docs/overview)
+- [Drizzle + Bun](https://orm.drizzle.team/docs/connect-bun-sql)
+- [Drizzle + PostgreSQL](https://orm.drizzle.team/docs/get-started/postgresql-new)
 
 ### AI & Agent Framework
 - [Vercel AI SDK v6 Documentation](https://ai-sdk.dev/docs/introduction)
 - [AI SDK v6 Beta Announcement](https://ai-sdk.dev/docs/announcing-ai-sdk-6-beta)
+- [Anthropic Claude API](https://docs.anthropic.com/en/docs)
 
 ### Slack
 - [Bolt for JavaScript](https://tools.slack.dev/bolt-js/)
 - [Bolt TypeScript Tutorial](https://slack.dev/bolt-js/tutorial/using-typescript)
-- [Socket Mode Documentation](https://api.slack.com/apis/socket-mode)
 - [Events API Documentation](https://api.slack.com/apis/events-api)
 - [Slack Block Kit](https://api.slack.com/block-kit)
 
