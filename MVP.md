@@ -128,38 +128,39 @@ MCP is an open standard (created by Anthropic) that provides a universal way for
 - Connection status dashboard
 - Easy disconnect/reconnect
 
-### 7. Model Selection (Slash Commands)
-- `/model` command to view and switch AI models
-- Support for multiple providers (Anthropic, OpenAI, Google, etc.)
-- Per-conversation or global model preference
-- Model capability indicators
+### 7. Slash Commands
+- `/model` - View and switch AI models across providers
+- `/prompt` - View and edit custom system instructions
+- `/apps` - Manage connected apps (connect/disconnect)
+- `/help` - Show available commands and features
 
-## Supported AI Providers & Models
+## Supported AI Providers
 
-| Provider | Models | Best For |
-|----------|--------|----------|
-| **Anthropic** | `claude-3-5-sonnet-20241022`, `claude-3-opus-20240229`, `claude-3-haiku-20240307` | Complex reasoning, tool use |
-| **OpenAI** | `gpt-4o`, `gpt-4o-mini`, `gpt-4-turbo`, `o1-preview`, `o1-mini` | General purpose, vision |
-| **Google** | `gemini-2.0-flash-exp`, `gemini-1.5-pro`, `gemini-1.5-flash` | Multimodal, long context |
-| **Groq** | `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `mixtral-8x7b-32768` | Fast inference |
-| **Mistral** | `mistral-large-latest`, `mistral-medium`, `mistral-small` | European, efficient |
-| **OpenRouter** | 300+ models | Access to any model |
+| Provider | Best For | Notes |
+|----------|----------|-------|
+| **Anthropic** | Complex reasoning, tool use | Claude models |
+| **OpenAI** | General purpose, vision | GPT-4 and o1 models |
+| **Google** | Multimodal, long context | Gemini models |
+| **Groq** | Ultra-fast inference | Open source models |
+| **Mistral** | European, efficient | Mistral models |
+| **OpenRouter** | Access to any model | 300+ models aggregator |
 
-### Default Model
+> **Note**: Specific model IDs configured in environment variables. Check each provider's docs for latest models.
+
+### Default Configuration
 
 ```typescript
-// Default: Claude 3.5 Sonnet (best for agentic tasks)
-const DEFAULT_MODEL = 'anthropic/claude-3-5-sonnet-20241022';
+// Default provider and model set via environment variable
+// Example: anthropic/claude-3-5-sonnet-latest
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL;
 ```
 
 ### Model Selection via Slash Command
 
 ```
 /model                     - Show current model and available options
-/model claude-sonnet       - Switch to Claude 3.5 Sonnet
-/model gpt-4o              - Switch to GPT-4o
-/model gemini-flash        - Switch to Gemini 2.0 Flash
-/model list                - List all available models
+/model <provider>/<model>  - Switch to specific model
+/model list                - List all configured providers
 ```
 
 ## Onboarding Flow
@@ -227,6 +228,51 @@ Agent: 📧 Let's connect Gmail!
        🔒 I use OAuth 2.0 - I never see your password.
 ```
 
+### System Prompt Configuration
+
+```
+Agent: ⚙️ Let's personalize how I work for you.
+
+       You can give me custom instructions that I'll always follow.
+       This is like setting my "personality" and preferences.
+
+       Examples:
+       • "Always be concise and to the point"
+       • "I work in software engineering, focus on technical topics"
+       • "Use casual tone, call me John"
+       • "When creating Notion pages, use my standard template"
+
+       [Set Custom Instructions] [Skip - Use Defaults]
+```
+
+```
+You: *clicks Set Custom Instructions*
+
+Agent: 📝 Enter your custom instructions:
+
+       (You can change these anytime with /prompt)
+
+       ┌────────────────────────────────────────┐
+       │ Type your instructions here...         │
+       │                                        │
+       │                                        │
+       └────────────────────────────────────────┘
+
+       [Save] [Cancel]
+```
+
+```
+You: *enters instructions and saves*
+
+Agent: ✅ Custom instructions saved!
+
+       I'll remember:
+       "Be concise. I'm a software engineer named John.
+        Use casual tone. For Notion, use bullet points."
+
+       You can update these anytime with /prompt
+```
+
 ### Setup Complete
 
 ```
@@ -236,17 +282,20 @@ Agent: 🎉 You're all set up!
        ✅ Notion - Personal workspace
        ✅ Gmail - john@gmail.com
 
+       Custom instructions: Configured ✓
+
        Here are some things you can try:
        • "What's on my Notion today?"
        • "Summarize my unread emails"
        • "Create a new page called Meeting Notes"
 
-       💡 Tip: Type /help anytime to see all commands.
+       💡 Tip: Use /help to see all commands.
 
        ---
 
-       Current model: Claude 3.5 Sonnet
+       Current model: Claude (default)
        Use /model to change it anytime.
+       Use /prompt to update your custom instructions.
 ```
 
 ### Connection Management (Anytime)
@@ -290,6 +339,66 @@ Agent: ⚠️ Disconnect Gmail?
        You can reconnect anytime.
 
        [Disconnect] [Cancel]
+```
+
+### Custom Instructions Management (/prompt)
+
+```
+You: "/prompt"
+
+Agent: 📝 Custom Instructions
+
+       Current instructions:
+       ┌────────────────────────────────────────┐
+       │ Be concise. I'm a software engineer    │
+       │ named John. Use casual tone. For       │
+       │ Notion, use bullet points.             │
+       └────────────────────────────────────────┘
+
+       [Edit] [Clear] [View Examples]
+```
+
+```
+You: *clicks Edit*
+
+Agent: 📝 Edit your custom instructions:
+
+       These instructions are included in every conversation.
+       Be specific about how you want me to behave.
+
+       ┌────────────────────────────────────────┐
+       │ Be concise. I'm a software engineer    │
+       │ named John. Use casual tone. For       │
+       │ Notion, use bullet points.             │
+       │                                        │
+       │ [cursor]                               │
+       └────────────────────────────────────────┘
+
+       [Save] [Cancel]
+```
+
+```
+You: *clicks View Examples*
+
+Agent: 💡 Example Custom Instructions
+
+       **For a busy professional:**
+       "Keep responses brief. Prioritize actionable items.
+        Always mention deadlines. I'm in EST timezone."
+
+       **For a developer:**
+       "I work with TypeScript and React. When discussing
+        code, be technical. Include code examples."
+
+       **For productivity:**
+       "Help me stay organized. When I add tasks, suggest
+        due dates. Summarize long emails in 3 bullets."
+
+       **For communication style:**
+       "Use a friendly, casual tone. Call me by my name.
+        Use emojis occasionally. Be encouraging."
+
+       [Back to Edit]
 ```
 
 ## Chain of Thought Display
@@ -356,7 +465,10 @@ Personal-agent/
 │   │       └── system.ts        # System prompts
 │   ├── db/
 │   │   ├── index.ts             # Drizzle client setup
-│   │   ├── schema.ts            # Database schema definitions
+│   │   ├── schema/
+│   │   │   ├── users.ts         # User settings & preferences
+│   │   │   ├── connections.ts   # OAuth tokens & app connections
+│   │   │   └── conversations.ts # Conversation history
 │   │   └── migrations/          # SQL migrations
 │   ├── mcp/
 │   │   ├── client.ts            # MCP client setup
@@ -371,6 +483,7 @@ Personal-agent/
 │   │       │   └── actions.ts   # Button/action handlers
 │   │       ├── commands/
 │   │       │   ├── model.ts     # /model slash command
+│   │       │   ├── prompt.ts    # /prompt custom instructions
 │   │       │   ├── apps.ts      # /apps connection management
 │   │       │   └── help.ts      # /help command
 │   │       ├── onboarding/
@@ -392,6 +505,47 @@ Personal-agent/
 ├── tsconfig.json
 ├── bunfig.toml                  # Bun configuration
 └── README.md
+```
+
+## Database Schema
+
+```typescript
+// src/db/schema/users.ts
+export const users = pgTable('users', {
+  id: text('id').primaryKey(),              // Slack user ID
+  slackTeamId: text('slack_team_id'),       // Workspace ID
+  customInstructions: text('custom_instructions'),  // System prompt
+  defaultModel: text('default_model'),       // e.g., "anthropic/claude-..."
+  defaultVisibility: text('default_visibility').default('standard'),
+  onboardingCompleted: boolean('onboarding_completed').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// src/db/schema/connections.ts
+export const connections = pgTable('connections', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id),
+  provider: text('provider').notNull(),      // 'notion', 'gmail', 'calendar'
+  accessToken: text('access_token'),         // Encrypted
+  refreshToken: text('refresh_token'),       // Encrypted
+  expiresAt: timestamp('expires_at'),
+  metadata: jsonb('metadata'),               // Provider-specific data
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// src/db/schema/conversations.ts
+export const conversations = pgTable('conversations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull().references(() => users.id),
+  slackThreadTs: text('slack_thread_ts'),    // Thread timestamp
+  slackChannelId: text('slack_channel_id'),
+  model: text('model'),                       // Model used for this convo
+  messages: jsonb('messages'),                // Conversation history
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
 ```
 
 ## Environment Variables
@@ -453,7 +607,10 @@ features:
   slash_commands:
     - command: /model
       description: View or change the AI model
-      usage_hint: "[model-name]"
+      usage_hint: "[provider/model]"
+    - command: /prompt
+      description: View or edit custom instructions
+      usage_hint: ""
     - command: /apps
       description: Manage connected apps
       usage_hint: ""
