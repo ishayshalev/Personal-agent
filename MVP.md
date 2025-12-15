@@ -2,28 +2,49 @@
 
 ## Overview
 
-A personal AI assistant controlled via WhatsApp that can take actions on your behalf across various platforms (starting with Notion). Built with Vercel AI SDK v6 and Node.js, designed for extensibility.
+A personal AI assistant controlled via Slack that can take actions on your behalf across various platforms (starting with Notion). Built with Vercel AI SDK v6 and Node.js, designed for extensibility with full visibility into the agent's chain of thought and actions.
 
 ## Architecture
 
 ```
 ┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│    WhatsApp     │────▶│   Node.js Server     │────▶│   MCP Client    │
-│  (Your Phone)   │◀────│   (AI Agent Core)    │◀────│                 │
+│   Slack App     │────▶│   Node.js Server     │────▶│   MCP Client    │
+│   (DM / @mention)│◀────│   (Bolt SDK)         │◀────│                 │
 └─────────────────┘     └──────────────────────┘     └─────────────────┘
-                                  │                          │
-                                  ▼                          ▼
-                        ┌──────────────────┐       ┌──────────────────┐
-                        │   Vercel AI SDK  │       │  Notion MCP      │
-                        │   v6 (Agent)     │       │  (hosted/local)  │
-                        └──────────────────┘       └──────────────────┘
-                                  │                          │
-                                  ▼                          ▼
-                        ┌──────────────────┐       ┌──────────────────┐
-                        │   LLM Provider   │       │  Future MCP      │
-                        │ (OpenAI/Anthropic)│       │  Servers...      │
-                        └──────────────────┘       └──────────────────┘
+        │                         │                          │
+        │ HTTP POST               │                          ▼
+        │ (Events API)            │                 ┌──────────────────┐
+        │                         ▼                 │  Notion MCP      │
+        │               ┌──────────────────┐        └──────────────────┘
+        │               │   Vercel AI SDK  │                 │
+        │               │   v6 (Agent)     │                 ▼
+        │               └──────────────────┘        ┌──────────────────┐
+        │                         │                 │  Future MCP      │
+        │                         ▼                 │  Servers...      │
+        │               ┌──────────────────┐        └──────────────────┘
+        └──────────────▶│   LLM Provider   │
+                        │ (OpenAI/Anthropic)│
+                        └──────────────────┘
 ```
+
+### Slack Connection Mode
+
+We use the **Events API** (HTTP webhooks) exclusively - same protocol from development to production:
+
+| Aspect | Events API (HTTP) |
+|--------|-------------------|
+| **Protocol** | HTTP POST requests |
+| **Public URL** | Required (ngrok for local dev) |
+| **Architecture** | Stateless, request/response |
+| **Scalability** | Excellent (serverless-friendly) |
+
+**Why HTTP-only:**
+- Same architecture from dev to production
+- Stateless = simpler to debug and scale
+- Works with serverless (Vercel, Railway, etc.)
+- No WebSocket connection management
+
+> For local development, use ngrok or similar tunneling service.
 
 ### Why MCP (Model Context Protocol)?
 
@@ -43,37 +64,92 @@ MCP is an open standard (created by Anthropic) that provides a universal way for
 | Language | TypeScript |
 | AI Framework | Vercel AI SDK v6 (beta) |
 | Tool Protocol | MCP (Model Context Protocol) |
-| WhatsApp Integration | Official WhatsApp Cloud API |
+| Slack Integration | Bolt SDK (`@slack/bolt`) |
 | Notion Integration | Official Notion MCP Server (`mcp.notion.com`) |
 | Database | SQLite (local) / PostgreSQL (production) |
-| Web Framework | Express.js or Fastify |
 | LLM Provider | OpenAI / Anthropic (configurable) |
 
 ## Core Features (MVP Scope)
 
-### 1. WhatsApp Integration
-- Receive messages via WhatsApp Cloud API webhooks
-- Send responses back to your WhatsApp
-- Support for text messages (media support in v2)
-- Message queue for handling rate limits
+### 1. Slack Integration
+- Receive messages via DM or @mentions
+- Events API (HTTP webhooks) for all environments
+- Rich message formatting with Slack Blocks
+- Thread support for conversations
+- Stateless architecture (serverless-ready)
 
 ### 2. AI Agent Core (Vercel AI SDK v6)
 - Agent built using the new `Agent` interface from AI SDK v6
 - Tool-calling capabilities for executing actions
 - Conversation memory (context window management)
 - Human-in-the-loop approval for sensitive actions
+- **Streaming responses with step visibility**
 
-### 3. Notion Integration via MCP
+### 3. Chain of Thought & Action Visibility
+- Real-time visibility into agent reasoning
+- Step-by-step action display in Slack
+- Tool call notifications before execution
+- Result summaries after each action
+- Collapsible detail views for complex operations
+
+### 4. Notion Integration via MCP
 - Uses official Notion MCP server (hosted at `mcp.notion.com/mcp`)
 - All Notion tools provided out-of-the-box via MCP
 - Query databases, create/update pages, manage blocks
 - Search across workspace
 - AI-optimized "Notion-flavored Markdown" format
 
-### 4. Security
-- Whitelist of allowed phone numbers (only you)
+### 5. Security
+- Slack workspace restriction (only your workspace)
+- User ID whitelist (only you can interact)
 - API key management via environment variables
 - Action confirmation for destructive operations
+
+## Chain of Thought Display
+
+The agent shows its thinking process in real-time using Slack message updates:
+
+### Example: Multi-step Task
+
+```
+You: "What are my overdue tasks and add them to today's standup notes"
+
+Agent: 🤔 Thinking...
+       ├─ I need to find overdue tasks in Notion
+       └─ Then append them to today's standup notes
+
+Agent: 🔧 Action: Querying tasks database...
+       └─ Filter: due_date < today, status != done
+
+Agent: 📋 Found 3 overdue tasks:
+       • Fix login bug (2 days overdue)
+       • Review PR #42 (1 day overdue)
+       • Update docs (3 days overdue)
+
+Agent: 🔧 Action: Searching for today's standup notes...
+       └─ Query: "Standup" + today's date
+
+Agent: 🔧 Action: Appending to standup notes...
+       └─ Adding overdue tasks section
+
+Agent: ✅ Done! I've added your 3 overdue tasks to today's
+       standup notes. Here's what I added:
+
+       ## Overdue Tasks
+       - [ ] Fix login bug (2 days overdue)
+       - [ ] Review PR #42 (1 day overdue)
+       - [ ] Update docs (3 days overdue)
+```
+
+### Visibility Levels
+
+| Level | Shows | Use Case |
+|-------|-------|----------|
+| **Minimal** | Final result only | Quick answers |
+| **Standard** | Actions + results | Default |
+| **Verbose** | Full reasoning chain | Debugging/learning |
+
+Configurable per-request: "verbose: what's on my calendar?"
 
 ## Project Structure
 
@@ -85,6 +161,7 @@ Personal-agent/
 │   │   └── env.ts               # Environment configuration
 │   ├── agent/
 │   │   ├── index.ts             # Agent setup with AI SDK v6
+│   │   ├── executor.ts          # Step executor with visibility
 │   │   ├── tools/
 │   │   │   ├── index.ts         # Tool registry (local tools only)
 │   │   │   └── system.ts        # System tools (memory, time, etc.)
@@ -95,38 +172,27 @@ Personal-agent/
 │   │   ├── notion.ts            # Notion MCP server connection
 │   │   └── types.ts             # MCP types
 │   ├── integrations/
-│   │   └── whatsapp/
-│   │       ├── client.ts        # WhatsApp API client
-│   │       ├── webhook.ts       # Webhook handler
-│   │       └── types.ts         # WhatsApp types
-│   ├── server/
-│   │   ├── index.ts             # Express/Fastify server
-│   │   └── routes/
-│   │       └── webhook.ts       # Webhook routes
+│   │   └── slack/
+│   │       ├── app.ts           # Bolt app setup
+│   │       ├── listeners/
+│   │       │   ├── messages.ts  # DM message handler
+│   │       │   ├── mentions.ts  # @mention handler
+│   │       │   └── actions.ts   # Button/action handlers
+│   │       ├── blocks/
+│   │       │   ├── thinking.ts  # Thinking indicator blocks
+│   │       │   ├── action.ts    # Action display blocks
+│   │       │   └── result.ts    # Result display blocks
+│   │       └── types.ts         # Slack types
 │   └── storage/
 │       ├── conversation.ts      # Conversation history
 │       └── db.ts                # Database connection
+├── manifest.json                # Slack app manifest
 ├── tests/
 ├── .env.example
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
-
-## API Endpoints
-
-### Webhook Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/webhook` | WhatsApp webhook verification |
-| POST | `/webhook` | Receive WhatsApp messages |
-
-### Health Check
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Server health check |
 
 ## Environment Variables
 
@@ -135,14 +201,12 @@ Personal-agent/
 PORT=3000
 NODE_ENV=development
 
-# WhatsApp Cloud API
-WHATSAPP_API_TOKEN=your_whatsapp_api_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_BUSINESS_ACCOUNT_ID=your_business_account_id
-WHATSAPP_WEBHOOK_VERIFY_TOKEN=your_verify_token
+# Slack (Events API)
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_SIGNING_SECRET=your-signing-secret
 
-# Allowed Users (comma-separated phone numbers)
-ALLOWED_PHONE_NUMBERS=+1234567890
+# Allowed Users (comma-separated Slack user IDs)
+ALLOWED_USER_IDS=U0123456789
 
 # LLM Provider
 OPENAI_API_KEY=your_openai_key
@@ -155,8 +219,51 @@ ANTHROPIC_API_KEY=your_anthropic_key
 NOTION_MCP_URL=https://mcp.notion.com/mcp
 # NOTION_API_KEY=your_notion_integration_token  # Only if self-hosting
 
+# Chain of Thought visibility (minimal | standard | verbose)
+DEFAULT_VISIBILITY=standard
+
 # Database (optional for MVP, can use in-memory)
 DATABASE_URL=file:./data/agent.db
+```
+
+## Slack App Manifest
+
+```yaml
+display_information:
+  name: Personal AI Agent
+  description: Your personal AI assistant
+  background_color: "#1a1a2e"
+
+features:
+  bot_user:
+    display_name: AI Agent
+    always_online: true
+  app_home:
+    home_tab_enabled: true
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: false
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write
+      - im:history
+      - im:read
+      - im:write
+      - app_mentions:read
+      - users:read
+
+settings:
+  event_subscriptions:
+    request_url: https://your-domain.com/slack/events
+    bot_events:
+      - message.im
+      - app_mention
+      - app_home_opened
+  interactivity:
+    is_enabled: true
+    request_url: https://your-domain.com/slack/actions
+  socket_mode_enabled: false
 ```
 
 ## Agent Tools (MVP)
@@ -192,88 +299,144 @@ Easy to add more capabilities by connecting additional MCP servers:
 
 | Service | MCP Server |
 |---------|------------|
-| Google Calendar | `@anthropic/mcp-google-calendar` (example) |
+| Google Calendar | Community MCP servers available |
 | GitHub | Official GitHub MCP |
-| Slack | Community MCP servers available |
+| Linear | Community MCP servers available |
 | Custom APIs | Build your own MCP server |
 
 ## Message Flow
 
 ```
-1. You send WhatsApp message
+1. You send Slack DM or @mention
          │
          ▼
-2. WhatsApp Cloud API sends webhook to server
+2. Slack sends HTTP POST to your server
          │
          ▼
-3. Server validates sender (whitelist check)
+3. Bolt SDK receives and validates signature
          │
          ▼
-4. Message passed to AI Agent
+4. Server validates user (whitelist check)
          │
          ▼
-5. Agent processes message with context
+5. Message passed to AI Agent
          │
          ▼
-6. Agent decides: respond or use tool?
+6. Agent starts processing
          │
-         ├──▶ Tool needed: Execute tool → Get result → Continue
-         │
-         ▼
-7. Generate response
+         ├──▶ Send "🤔 Thinking..." to Slack
          │
          ▼
-8. Send response via WhatsApp API
+7. Agent decides: respond or use tool?
+         │
+         ├──▶ Tool needed:
+         │    ├─ Send "🔧 Action: ..." to Slack
+         │    ├─ Execute tool via MCP
+         │    ├─ Send "📋 Result: ..." to Slack
+         │    └─ Continue processing
          │
          ▼
-9. You receive response on WhatsApp
+8. Generate final response
+         │
+         ▼
+9. Send "✅ Done: ..." to Slack
+         │
+         ▼
+10. You see the full chain in Slack thread
 ```
 
 ## Example Interactions
 
-### Query Notion
+### Query Notion (with Chain of Thought)
 ```
 You: "What tasks do I have in my Projects database?"
-Agent: [Uses notion_query_database via MCP]
-Agent: "You have 5 tasks in your Projects database:
-        1. Finish MVP spec (Due: Today)
-        2. Set up CI/CD (Due: Tomorrow)
-        ..."
+
+Agent: 🤔 Understanding your request...
+       └─ Looking for tasks in Projects database
+
+Agent: 🔧 Action: notion_query_database
+       └─ Database: Projects
+       └─ Filter: type = "task"
+
+Agent: ✅ Found 5 tasks in your Projects database:
+       1. Finish MVP spec (Due: Today)
+       2. Set up CI/CD (Due: Tomorrow)
+       3. Write tests (Due: Friday)
+       4. Code review (No due date)
+       5. Deploy v1 (Due: Next week)
 ```
 
-### Create Note
+### Multi-step Action
 ```
-You: "Add a note to my Ideas page: Build a habit tracker app"
-Agent: [Uses notion_update_page via MCP]
-Agent: "Done! I've added 'Build a habit tracker app' to your Ideas page."
+You: "Create a new page called 'Meeting Notes' and add today's date"
+
+Agent: 🤔 Planning actions...
+       ├─ 1. Create new page "Meeting Notes"
+       └─ 2. Add today's date to the page
+
+Agent: 🔧 Action: notion_create_page
+       └─ Title: "Meeting Notes"
+       └─ Parent: Workspace root
+
+Agent: 📋 Page created successfully
+       └─ ID: abc-123-def
+
+Agent: 🔧 Action: notion_update_page
+       └─ Adding content: "## December 15, 2025"
+
+Agent: ✅ Done! Created "Meeting Notes" with today's date.
+       [View in Notion →]
 ```
 
-### Natural Conversation with Memory
+### Verbose Mode
 ```
-You: "Remind me about that startup idea I mentioned last week"
-Agent: [Uses recall tool - local]
-Agent: "Last week you mentioned wanting to build a personal finance
-        app that connects to banks and uses AI for spending insights."
-```
+You: "verbose: summarize my week"
 
-### Search Across Workspace
-```
-You: "Find my notes about machine learning"
-Agent: [Uses notion_search via MCP]
-Agent: "Found 3 pages mentioning machine learning:
-        1. ML Course Notes (last edited 2 days ago)
-        2. Project Ideas → AI Features section
-        3. Reading List → 'Hands-On ML' book notes"
+Agent: 🧠 Verbose mode enabled
+
+Agent: 🤔 Analyzing request...
+       ├─ User wants a summary of their week
+       ├─ I should check: tasks, meetings, notes
+       └─ Time range: last 7 days
+
+Agent: 🔧 Step 1/3: Querying tasks...
+       ├─ Tool: notion_query_database
+       ├─ Database: Tasks
+       ├─ Filter: modified_time > 7 days ago
+       └─ Response: 12 tasks found
+
+Agent: 🔧 Step 2/3: Querying calendar...
+       ├─ Tool: notion_query_database
+       ├─ Database: Calendar
+       └─ Response: 8 events found
+
+Agent: 🔧 Step 3/3: Generating summary...
+       └─ Analyzing patterns and highlights
+
+Agent: ✅ Your Week in Review:
+
+       📊 Productivity: 8/12 tasks completed (67%)
+       📅 Meetings: 8 events, 12 hours total
+       🎯 Top focus: MVP development
+
+       Highlights:
+       • Completed MVP spec
+       • 3 PR reviews done
+       • Started CI/CD setup
 ```
 
 ## Setup Requirements
 
-### WhatsApp Business Setup
-1. Create a Meta Developer account
-2. Create a Meta App with WhatsApp product
-3. Set up a WhatsApp Business Account
-4. Get API credentials (Access Token, Phone Number ID)
-5. Configure webhook URL (needs HTTPS - use ngrok for dev)
+### Slack App Setup
+1. Go to api.slack.com/apps → Create New App
+2. Choose "From manifest" and paste the manifest above
+3. Install to your workspace
+4. Get credentials:
+   - `SLACK_BOT_TOKEN` (OAuth & Permissions → Bot User OAuth Token)
+   - `SLACK_SIGNING_SECRET` (Basic Information → App Credentials → Signing Secret)
+5. Set Event Subscriptions Request URL to your server endpoint
+   - For local dev: Use ngrok URL (e.g., `https://abc123.ngrok.io/slack/events`)
+   - For production: Your deployed server URL
 
 ### Notion MCP Setup
 
@@ -290,8 +453,9 @@ Agent: "Found 3 pages mentioning machine learning:
 5. Run your own MCP server (open-source available)
 
 ### Deployment Options (MVP)
-- **Local Development**: ngrok + local Node.js server
-- **Production**: Railway, Render, Fly.io, or any Node.js hosting
+- **Local Development**: ngrok + `npm run dev`
+- **Production**: Railway, Render, Fly.io, Vercel, or any Node.js hosting
+- **Recommended for MVP**: Deploy early to Railway/Render (free tier) to avoid ngrok hassle
 
 ## Dependencies
 
@@ -301,8 +465,8 @@ Agent: "Found 3 pages mentioning machine learning:
     "ai": "^6.0.0-beta",
     "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/anthropic": "^1.0.0",
+    "@slack/bolt": "^4.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "express": "^4.18.0",
     "better-sqlite3": "^11.0.0",
     "zod": "^3.23.0",
     "dotenv": "^16.4.0"
@@ -310,68 +474,68 @@ Agent: "Found 3 pages mentioning machine learning:
   "devDependencies": {
     "typescript": "^5.4.0",
     "@types/node": "^20.0.0",
-    "@types/express": "^4.17.0",
     "tsx": "^4.7.0"
   }
 }
 ```
 
-> Note: `@notionhq/client` is NOT needed - we use Notion via MCP instead.
-
 ## Development Phases
 
 ### Phase 1: Foundation (Current MVP)
 - [x] Project setup with TypeScript
-- [ ] Basic Express server with webhook endpoints
-- [ ] WhatsApp Cloud API integration
+- [ ] Slack Bolt app with Events API
+- [ ] Basic DM and @mention handling
 - [ ] AI Agent setup with Vercel AI SDK v6
+- [ ] Chain of thought visibility (standard mode)
 - [ ] MCP client integration
 - [ ] Connect Notion MCP server
 - [ ] Simple conversation memory
 
 ### Phase 2: Enhanced Intelligence
+- [ ] Verbose mode for full visibility
 - [ ] Improved context management
 - [ ] Better tool selection
-- [ ] Confirmation flow for actions
+- [ ] Confirmation flow for destructive actions
 - [ ] Error handling and retries
 
 ### Phase 3: More MCP Servers
 - [ ] Google Calendar MCP
-- [ ] Email MCP (Gmail/Outlook)
 - [ ] GitHub MCP
+- [ ] Linear MCP
 - [ ] Custom MCP server for your own APIs
 
 ### Phase 4: Advanced Features
-- [ ] Voice messages support
-- [ ] Image understanding
+- [ ] App Home dashboard
+- [ ] Slash commands
 - [ ] Scheduled tasks/reminders
-- [ ] Multi-step workflows
+- [ ] Multi-step workflow builder
+- [ ] Proactive notifications
 
 ## Limitations (MVP)
 
 - Single user only (you)
-- Text messages only (no voice/images initially)
+- Text messages only (no file attachments initially)
 - No scheduled/proactive messages
 - Basic conversation memory (last N messages)
-- Requires always-on server or serverless deployment
+- Requires public URL (ngrok for local dev, or deploy to cloud)
 
 ## Security Considerations
 
-1. **Phone Number Whitelist**: Only process messages from your number
-2. **No Sensitive Data Logging**: Don't log message content in production
-3. **API Key Security**: Use environment variables, never commit keys
-4. **Webhook Verification**: Validate all incoming webhooks
-5. **Rate Limiting**: Implement rate limits to prevent abuse
+1. **User ID Whitelist**: Only process messages from your Slack user ID
+2. **Workspace Restriction**: App only installed in your workspace
+3. **No Sensitive Data Logging**: Don't log message content in production
+4. **API Key Security**: Use environment variables, never commit keys
+5. **Token Rotation**: Rotate Slack tokens periodically
 
 ## Future Expansion Ideas
 
-- **More Platforms**: Telegram, Discord, SMS
-- **More MCP Servers**: Calendar, Email, Task managers, Slack, GitHub
+- **More Platforms**: Telegram, Discord, CLI
+- **More MCP Servers**: Calendar, Email, Task managers, GitHub
 - **Proactive Agent**: Scheduled check-ins, reminders
-- **Voice Interface**: Process voice messages
+- **App Home Dashboard**: Quick actions, recent activity
+- **Slash Commands**: `/ask`, `/task`, `/note`
 - **Local LLM Option**: Ollama for privacy-sensitive tasks
 - **Custom MCP Servers**: Build MCP servers for your own APIs/services
-- **MCP Server Marketplace**: Easy discovery and connection of new capabilities
 
 ---
 
@@ -385,15 +549,22 @@ npm install
 
 # Configure environment
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env with your Slack tokens and API keys
 
-# Development with ngrok
+# Start ngrok tunnel (in separate terminal)
 ngrok http 3000
-# Update WhatsApp webhook URL with ngrok URL
+# Copy the HTTPS URL (e.g., https://abc123.ngrok.io)
 
-# Run
+# Update Slack app Event Subscriptions URL to:
+# https://abc123.ngrok.io/slack/events
+
+# Run server
 npm run dev
+
+# Open Slack and DM your bot!
 ```
+
+**Pro tip**: Deploy to Railway/Render early to skip the ngrok step entirely.
 
 ## References
 
@@ -401,13 +572,16 @@ npm run dev
 - [Vercel AI SDK v6 Documentation](https://ai-sdk.dev/docs/introduction)
 - [AI SDK v6 Beta Announcement](https://ai-sdk.dev/docs/announcing-ai-sdk-6-beta)
 
+### Slack
+- [Bolt for JavaScript](https://tools.slack.dev/bolt-js/)
+- [Bolt TypeScript Tutorial](https://slack.dev/bolt-js/tutorial/using-typescript)
+- [Socket Mode Documentation](https://api.slack.com/apis/socket-mode)
+- [Events API Documentation](https://api.slack.com/apis/events-api)
+- [Slack Block Kit](https://api.slack.com/block-kit)
+
 ### MCP (Model Context Protocol)
 - [MCP Specification](https://modelcontextprotocol.io)
 - [Notion MCP Documentation](https://developers.notion.com/docs/mcp)
 - [Notion MCP Getting Started](https://developers.notion.com/docs/get-started-with-mcp)
 - [Notion's Hosted MCP Server Blog](https://www.notion.com/blog/notions-hosted-mcp-server-an-inside-look)
 - [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-
-### WhatsApp
-- [WhatsApp Cloud API Documentation](https://developers.facebook.com/docs/whatsapp/cloud-api)
-- [Official WhatsApp Node.js SDK](https://github.com/WhatsApp/WhatsApp-Nodejs-SDK)
