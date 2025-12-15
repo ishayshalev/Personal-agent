@@ -8,22 +8,32 @@ A personal AI assistant controlled via WhatsApp that can take actions on your be
 
 ```
 ┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
-│    WhatsApp     │────▶│   Node.js Server     │────▶│   Notion API    │
+│    WhatsApp     │────▶│   Node.js Server     │────▶│   MCP Client    │
 │  (Your Phone)   │◀────│   (AI Agent Core)    │◀────│                 │
 └─────────────────┘     └──────────────────────┘     └─────────────────┘
-                                  │
-                                  ▼
-                        ┌──────────────────┐
-                        │   Vercel AI SDK  │
-                        │   v6 (Agent)     │
-                        └──────────────────┘
-                                  │
-                                  ▼
-                        ┌──────────────────┐
-                        │   LLM Provider   │
-                        │ (OpenAI/Anthropic)│
-                        └──────────────────┘
+                                  │                          │
+                                  ▼                          ▼
+                        ┌──────────────────┐       ┌──────────────────┐
+                        │   Vercel AI SDK  │       │  Notion MCP      │
+                        │   v6 (Agent)     │       │  (hosted/local)  │
+                        └──────────────────┘       └──────────────────┘
+                                  │                          │
+                                  ▼                          ▼
+                        ┌──────────────────┐       ┌──────────────────┐
+                        │   LLM Provider   │       │  Future MCP      │
+                        │ (OpenAI/Anthropic)│       │  Servers...      │
+                        └──────────────────┘       └──────────────────┘
 ```
+
+### Why MCP (Model Context Protocol)?
+
+MCP is an open standard (created by Anthropic) that provides a universal way for AI agents to interact with external tools and services. Benefits:
+
+- **Standardized Interface**: One protocol to connect to many services
+- **Official Support**: Notion provides an official hosted MCP server
+- **AI-Optimized**: Notion's MCP uses "Notion-flavored Markdown" - more token-efficient
+- **Extensible**: Easy to add more MCP servers (Calendar, Email, etc.) later
+- **Less Code**: No need to write/maintain custom API integrations
 
 ## Tech Stack
 
@@ -32,7 +42,9 @@ A personal AI assistant controlled via WhatsApp that can take actions on your be
 | Runtime | Node.js 20+ |
 | Language | TypeScript |
 | AI Framework | Vercel AI SDK v6 (beta) |
-| WhatsApp Integration | Official WhatsApp Cloud API + `@vercel/ai` agents |
+| Tool Protocol | MCP (Model Context Protocol) |
+| WhatsApp Integration | Official WhatsApp Cloud API |
+| Notion Integration | Official Notion MCP Server (`mcp.notion.com`) |
 | Database | SQLite (local) / PostgreSQL (production) |
 | Web Framework | Express.js or Fastify |
 | LLM Provider | OpenAI / Anthropic (configurable) |
@@ -51,12 +63,12 @@ A personal AI assistant controlled via WhatsApp that can take actions on your be
 - Conversation memory (context window management)
 - Human-in-the-loop approval for sensitive actions
 
-### 3. Notion Integration (First Platform)
-- Query databases
-- Create new pages
-- Update existing pages
-- Add content blocks to pages
+### 3. Notion Integration via MCP
+- Uses official Notion MCP server (hosted at `mcp.notion.com/mcp`)
+- All Notion tools provided out-of-the-box via MCP
+- Query databases, create/update pages, manage blocks
 - Search across workspace
+- AI-optimized "Notion-flavored Markdown" format
 
 ### 4. Security
 - Whitelist of allowed phone numbers (only you)
@@ -74,19 +86,19 @@ Personal-agent/
 │   ├── agent/
 │   │   ├── index.ts             # Agent setup with AI SDK v6
 │   │   ├── tools/
-│   │   │   ├── index.ts         # Tool registry
-│   │   │   ├── notion.ts        # Notion tools
-│   │   │   └── system.ts        # System tools (memory, etc.)
+│   │   │   ├── index.ts         # Tool registry (local tools only)
+│   │   │   └── system.ts        # System tools (memory, time, etc.)
 │   │   └── prompts/
 │   │       └── system.ts        # System prompts
+│   ├── mcp/
+│   │   ├── client.ts            # MCP client setup
+│   │   ├── notion.ts            # Notion MCP server connection
+│   │   └── types.ts             # MCP types
 │   ├── integrations/
-│   │   ├── whatsapp/
-│   │   │   ├── client.ts        # WhatsApp API client
-│   │   │   ├── webhook.ts       # Webhook handler
-│   │   │   └── types.ts         # WhatsApp types
-│   │   └── notion/
-│   │       ├── client.ts        # Notion API client
-│   │       └── types.ts         # Notion types
+│   │   └── whatsapp/
+│   │       ├── client.ts        # WhatsApp API client
+│   │       ├── webhook.ts       # Webhook handler
+│   │       └── types.ts         # WhatsApp types
 │   ├── server/
 │   │   ├── index.ts             # Express/Fastify server
 │   │   └── routes/
@@ -137,8 +149,11 @@ OPENAI_API_KEY=your_openai_key
 # Or use Anthropic
 ANTHROPIC_API_KEY=your_anthropic_key
 
-# Notion
-NOTION_API_KEY=your_notion_integration_token
+# Notion MCP (OAuth handled by MCP server)
+# For hosted MCP: OAuth flow via mcp.notion.com
+# For self-hosted MCP: provide integration token
+NOTION_MCP_URL=https://mcp.notion.com/mcp
+# NOTION_API_KEY=your_notion_integration_token  # Only if self-hosting
 
 # Database (optional for MVP, can use in-memory)
 DATABASE_URL=file:./data/agent.db
@@ -146,23 +161,41 @@ DATABASE_URL=file:./data/agent.db
 
 ## Agent Tools (MVP)
 
-### Notion Tools
+### Notion Tools (via MCP - provided automatically)
 
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `notion_search` | Search across Notion workspace | `query: string` |
-| `notion_query_database` | Query a Notion database | `database_id: string, filter?: object` |
-| `notion_create_page` | Create a new page | `parent_id: string, title: string, content?: string` |
-| `notion_update_page` | Update page properties | `page_id: string, properties: object` |
-| `notion_append_blocks` | Add content to a page | `page_id: string, blocks: Block[]` |
+The Notion MCP server provides these tools out-of-the-box:
 
-### System Tools
+| Tool | Description |
+|------|-------------|
+| `notion_search` | Search across workspace |
+| `notion_get_page` | Retrieve a page's content |
+| `notion_create_page` | Create a new page |
+| `notion_update_page` | Update page content/properties |
+| `notion_query_database` | Query a database with filters |
+| `notion_create_database_item` | Add item to a database |
+| `notion_get_comments` | Get comments on a page |
+| `notion_add_comment` | Add a comment to a page |
+
+> Note: Exact tool names/parameters defined by the MCP server. Tools are discovered at runtime via the MCP protocol.
+
+### Local System Tools (custom)
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `remember` | Store information for later | `key: string, value: string` |
 | `recall` | Retrieve stored information | `key: string` |
 | `get_current_time` | Get current date/time | - |
+
+### Future MCP Servers
+
+Easy to add more capabilities by connecting additional MCP servers:
+
+| Service | MCP Server |
+|---------|------------|
+| Google Calendar | `@anthropic/mcp-google-calendar` (example) |
+| GitHub | Official GitHub MCP |
+| Slack | Community MCP servers available |
+| Custom APIs | Build your own MCP server |
 
 ## Message Flow
 
@@ -201,7 +234,7 @@ DATABASE_URL=file:./data/agent.db
 ### Query Notion
 ```
 You: "What tasks do I have in my Projects database?"
-Agent: [Uses notion_query_database tool]
+Agent: [Uses notion_query_database via MCP]
 Agent: "You have 5 tasks in your Projects database:
         1. Finish MVP spec (Due: Today)
         2. Set up CI/CD (Due: Tomorrow)
@@ -211,16 +244,26 @@ Agent: "You have 5 tasks in your Projects database:
 ### Create Note
 ```
 You: "Add a note to my Ideas page: Build a habit tracker app"
-Agent: [Uses notion_append_blocks tool]
+Agent: [Uses notion_update_page via MCP]
 Agent: "Done! I've added 'Build a habit tracker app' to your Ideas page."
 ```
 
-### Natural Conversation
+### Natural Conversation with Memory
 ```
 You: "Remind me about that startup idea I mentioned last week"
-Agent: [Uses recall tool]
+Agent: [Uses recall tool - local]
 Agent: "Last week you mentioned wanting to build a personal finance
         app that connects to banks and uses AI for spending insights."
+```
+
+### Search Across Workspace
+```
+You: "Find my notes about machine learning"
+Agent: [Uses notion_search via MCP]
+Agent: "Found 3 pages mentioning machine learning:
+        1. ML Course Notes (last edited 2 days ago)
+        2. Project Ideas → AI Features section
+        3. Reading List → 'Hands-On ML' book notes"
 ```
 
 ## Setup Requirements
@@ -232,11 +275,19 @@ Agent: "Last week you mentioned wanting to build a personal finance
 4. Get API credentials (Access Token, Phone Number ID)
 5. Configure webhook URL (needs HTTPS - use ngrok for dev)
 
-### Notion Setup
+### Notion MCP Setup
+
+**Option A: Hosted MCP (Recommended for MVP)**
+1. Connect via OAuth at `mcp.notion.com`
+2. Authorize access to your workspace
+3. MCP client handles token management automatically
+
+**Option B: Self-Hosted MCP**
 1. Go to notion.so/my-integrations
 2. Create a new integration
 3. Get the Internal Integration Token
 4. Share relevant pages/databases with your integration
+5. Run your own MCP server (open-source available)
 
 ### Deployment Options (MVP)
 - **Local Development**: ngrok + local Node.js server
@@ -250,7 +301,7 @@ Agent: "Last week you mentioned wanting to build a personal finance
     "ai": "^6.0.0-beta",
     "@ai-sdk/openai": "^1.0.0",
     "@ai-sdk/anthropic": "^1.0.0",
-    "@notionhq/client": "^2.2.0",
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "express": "^4.18.0",
     "better-sqlite3": "^11.0.0",
     "zod": "^3.23.0",
@@ -265,6 +316,8 @@ Agent: "Last week you mentioned wanting to build a personal finance
 }
 ```
 
+> Note: `@notionhq/client` is NOT needed - we use Notion via MCP instead.
+
 ## Development Phases
 
 ### Phase 1: Foundation (Current MVP)
@@ -272,7 +325,8 @@ Agent: "Last week you mentioned wanting to build a personal finance
 - [ ] Basic Express server with webhook endpoints
 - [ ] WhatsApp Cloud API integration
 - [ ] AI Agent setup with Vercel AI SDK v6
-- [ ] Notion integration with basic tools
+- [ ] MCP client integration
+- [ ] Connect Notion MCP server
 - [ ] Simple conversation memory
 
 ### Phase 2: Enhanced Intelligence
@@ -281,11 +335,11 @@ Agent: "Last week you mentioned wanting to build a personal finance
 - [ ] Confirmation flow for actions
 - [ ] Error handling and retries
 
-### Phase 3: More Integrations
-- [ ] Google Calendar
-- [ ] Email (Gmail/Outlook)
-- [ ] Todoist / Linear
-- [ ] Custom webhooks
+### Phase 3: More MCP Servers
+- [ ] Google Calendar MCP
+- [ ] Email MCP (Gmail/Outlook)
+- [ ] GitHub MCP
+- [ ] Custom MCP server for your own APIs
 
 ### Phase 4: Advanced Features
 - [ ] Voice messages support
@@ -312,11 +366,12 @@ Agent: "Last week you mentioned wanting to build a personal finance
 ## Future Expansion Ideas
 
 - **More Platforms**: Telegram, Discord, SMS
-- **More Integrations**: Calendar, Email, Task managers
+- **More MCP Servers**: Calendar, Email, Task managers, Slack, GitHub
 - **Proactive Agent**: Scheduled check-ins, reminders
 - **Voice Interface**: Process voice messages
 - **Local LLM Option**: Ollama for privacy-sensitive tasks
-- **Plugin System**: Easy way to add new tools/integrations
+- **Custom MCP Servers**: Build MCP servers for your own APIs/services
+- **MCP Server Marketplace**: Easy discovery and connection of new capabilities
 
 ---
 
@@ -342,9 +397,17 @@ npm run dev
 
 ## References
 
+### AI & Agent Framework
 - [Vercel AI SDK v6 Documentation](https://ai-sdk.dev/docs/introduction)
 - [AI SDK v6 Beta Announcement](https://ai-sdk.dev/docs/announcing-ai-sdk-6-beta)
+
+### MCP (Model Context Protocol)
+- [MCP Specification](https://modelcontextprotocol.io)
+- [Notion MCP Documentation](https://developers.notion.com/docs/mcp)
+- [Notion MCP Getting Started](https://developers.notion.com/docs/get-started-with-mcp)
+- [Notion's Hosted MCP Server Blog](https://www.notion.com/blog/notions-hosted-mcp-server-an-inside-look)
+- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
+
+### WhatsApp
 - [WhatsApp Cloud API Documentation](https://developers.facebook.com/docs/whatsapp/cloud-api)
 - [Official WhatsApp Node.js SDK](https://github.com/WhatsApp/WhatsApp-Nodejs-SDK)
-- [Notion API Documentation](https://developers.notion.com)
-- [Notion Node.js SDK](https://github.com/makenotion/notion-sdk-js)
